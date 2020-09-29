@@ -41,14 +41,15 @@ import { me } from "companion";
 // // })
 
 console.log('Current wake interval for companion is: ' + me.wakeInterval);
-me.wakeInterval = 300000;
+// me.wakeInterval = 300000;
 console.log('Current wake interval for companion is: ' + me.wakeInterval);
 
 console.log("Companion code started");
 var MQTT = Paho();
 let init;
 let timestamp, battery, av_Memory, totalMemory, heartRate;
-var client = new MQTT.Client("192.168.1.6", 3000, "clientId");
+var accel = {x:0,y:0,z:0};
+var client = new MQTT.Client("192.168.1.70", 3000, "clientId");
 
 // set callback handlers
 client.onConnectionLost = onConnectionLost;
@@ -67,9 +68,9 @@ function onConnect() {
   client.subscribe('watch2/kill');
   // Once a connection has been made, make a subscription and send a message.
   console.log("onConnect");
-  messaging.peerSocket.onopen = function() {
+  // messaging.peerSocket.onopen = function() {
     client.publish('watch2/connect', "Ready");
-  }
+  // }
   
   // client.subscribe("World");
 
@@ -89,29 +90,56 @@ function onMessageArrived(message) {
     console.log(JSON.stringify(message));
     var msg = JSON.parse(message.payloadString);
     var period = msg.frequency;
-
-    messaging.peerSocket.send(period);
-    console.log('Sent start period code to app');
-    messaging.peerSocket.onmessage = function (evt) {
-      // Output the message to the console
-      console.log(evt.data);
-      // finalMessage = evt.data;
-
-      init = new Date();
-      var data = JSON.parse(evt.data);
-      timestamp = data.timestamp, battery = data.battery, av_Memory = data.av_Mem, totalMemory = data.totalMemory, heartRate = data.heartRate;
-      var message = new MQTT.Message(JSON.stringify(data));
-      // var message = new MQTT.Message("Hello");
-      message.destinationName = "watch2/watchdata";
-      client.send(message);
-    }
+    if(msg.test_type == 'baseline'){
+      messaging.peerSocket.send(period);
+      console.log('baseline');
+      messaging.peerSocket.onmessage = function (evt) {
+        // Output the message to the console
+        console.log(evt.data);
+        // finalMessage = evt.data;
+        init = new Date();
+        var data = JSON.parse(evt.data);
+        timestamp = data.timestamp, battery = data.battery, av_Memory = data.av_Mem, totalMemory = data.totalMemory, heartRate = data.heartRate;
+        var message = new MQTT.Message(JSON.stringify({
+          timestamp: timestamp, battery: battery, av_Memory: av_Memory, totalMemory: totalMemory,
+          heartRate: heartRate, roundtrip_time: 0
+        }));
+        message.destinationName = "watch2/finaldata";
+        client.send(message);
+      }
+    } else {
+      messaging.peerSocket.send(period);
+      console.log('Sent start period code to app');
+      messaging.peerSocket.onmessage = function (evt) {
+        // Output the message to the console
+        console.log(evt.data);
+        // finalMessage = evt.data;
+  
+        init = new Date();
+        var data = JSON.parse(evt.data);
+        // var ac = JSON.parse(data.accel);
+        console.log(data.accel.x + ":" + data.accel.y);
+        // timestamp = data.timestamp, battery = data.battery, av_Memory = data.av_Mem, totalMemory = data.totalMemory, heartRate = data.heartRate;
+        timestamp = data.timestamp, battery = data.battery, av_Memory = data.av_Mem, totalMemory = data.totalMemory, accel.x = data.accel.x, accel.y = data.accel.y, accel.z = data.accel.z;
+        var message = new MQTT.Message(JSON.stringify(data));
+        // var message = new MQTT.Message("Hello");
+        message.destinationName = "watch2/watchdata";
+        console.log('Accel is now: ' + accel.x);
+        client.send(message);
+        
+      }
+    }   
   } else if(message.destinationName == 'watch2/ack'){
     console.log("onMessageArrived:" + message.payloadString);
     console.log('init is: '+ init);
     var finaldate = new Date() - init;
+    // var message = new MQTT.Message(JSON.stringify({
+    //   timestamp: timestamp, battery: battery, av_Memory: av_Memory, totalMemory: totalMemory,
+    //   heartRate: heartRate, roundtrip_time: finaldate
+    // }));
     var message = new MQTT.Message(JSON.stringify({
       timestamp: timestamp, battery: battery, av_Memory: av_Memory, totalMemory: totalMemory,
-      heartRate: heartRate, roundtrip_time: finaldate
+      accel: accel, roundtrip_time: finaldate
     }));
     message.destinationName = "watch2/finaldata";
     client.send(message);
@@ -122,4 +150,3 @@ function onMessageArrived(message) {
 }
 
 // }
-
